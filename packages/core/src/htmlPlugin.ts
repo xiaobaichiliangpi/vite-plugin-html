@@ -68,12 +68,15 @@ export function createPlugin(userOptions: UserOptions = {}): PluginOption {
       }
       const proxy = viteConfig.server?.proxy ?? {}
       const baseUrl = viteConfig.base ?? '/'
+      const publicDir = getRewireStart(viteConfig.publicDir)
       const keys = Object.keys(proxy)
 
       let indexPage: any = null
       for (const page of _pages) {
         if (page.filename !== 'index.html') {
-          rewrites.push(createRewire(page.template, page, baseUrl, keys))
+          rewrites.push(
+            createRewire(page.template, page, baseUrl, keys, publicDir),
+          )
         } else {
           indexPage = page
         }
@@ -81,7 +84,7 @@ export function createPlugin(userOptions: UserOptions = {}): PluginOption {
 
       // ensure order
       if (indexPage) {
-        rewrites.push(createRewire('', indexPage, baseUrl, keys))
+        rewrites.push(createRewire('', indexPage, baseUrl, keys, publicDir))
       }
 
       server.middlewares.use(
@@ -319,11 +322,22 @@ export async function readHtml(path: string) {
   return await fs.readFile(path).then((buffer) => buffer.toString())
 }
 
+function getRewireStart(staticDir: string) {
+  if (!fs.pathExistsSync(staticDir)) return []
+  const publicRes: string[] = []
+  const files = fs.readdirSync(staticDir)
+  files.forEach((file) => {
+    publicRes.push(`/${file}`)
+  })
+  return publicRes
+}
+
 function createRewire(
   reg: string,
   page: any,
   baseUrl: string,
   proxyUrlKeys: string[],
+  publicDir: string[],
 ) {
   return {
     from: new RegExp(`^/${reg}*`),
@@ -340,6 +354,9 @@ function createRewire(
       const isApiUrl = proxyUrlKeys.some((item) =>
         pathname.startsWith(path.resolve(baseUrl, item)),
       )
+      if (publicDir.find((v) => excludeBaseUrl.startsWith(v)) && !isApiUrl) {
+        return excludeBaseUrl
+      }
       return isApiUrl ? parsedUrl.path : template
     },
   }
